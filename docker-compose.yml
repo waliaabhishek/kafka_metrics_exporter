@@ -1,0 +1,14 @@
+version: "2.3"
+services:
+  jmx-data-poller:
+    image: python:latest
+    container_name: jmx-data-poller
+    cpus: 0.2
+    restart: always
+    depends_on:
+      - kibana
+    volumes:
+      - $PWD/Code/Parse_JMX.py:/tmp/JMXParser/Parse_JMX.py:rw
+      - $PWD/Code/requirements.txt:/tmp/JMXParser/requirements.txt:rw
+      - $PWD/ELKData/jmx_dashboard.json:/tmp/JMXParser/jmx_dashboard.json:rw
+    command: "bash -c 'pip install -r /tmp/JMXParser/requirements.txt && cd /tmp/JMXParser && python /tmp/JMXParser/Parse_JMX.py'"

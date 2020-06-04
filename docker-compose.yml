@@ -1,14 +1,12 @@
 version: "2.3"
 services:
-  jmx-data-poller:
-    image: python:latest
-    container_name: jmx-data-poller
+  kafka-metrics-processor:
+    image: python:3.7-alpine
+    container_name: kafka-metrics-processor
     cpus: 0.2
     restart: always
-    depends_on:
-      - kibana
+
     volumes:
-      - $PWD/Code/Parse_JMX.py:/tmp/JMXParser/Parse_JMX.py:rw
-      - $PWD/Code/requirements.txt:/tmp/JMXParser/requirements.txt:rw
-      - $PWD/ELKData/jmx_dashboard.json:/tmp/JMXParser/jmx_dashboard.json:rw
-    command: "bash -c 'pip install -r /tmp/JMXParser/requirements.txt && cd /tmp/JMXParser && python /tmp/JMXParser/Parse_JMX.py'"
+      - $PWD/Code/:/usr/src/app/:rw
+      - $PWD/ELK/jmx_dashboard.json:/usr/src/app/jmx_dashboard.json:rw
+    command: "bash -c 'pip install -r /usr/src/app/requirements.txt && cd /usr/src/app/ && python /usr/src/app/main.py'"

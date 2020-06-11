@@ -1,4 +1,4 @@
-# Apache Kafka JMX Metrics ELK Extractor and Dashboard
+# Apache Kafka JMX Metrics Extractor and Dashboard
 Extract JMX Metrics in Jolokia format, ingest into Elastic and setup a dashboard to view it.
 
 The setup only works with metrics from Zookeepeer , Kafka Brokers & Kafka Connect Services at the moment.

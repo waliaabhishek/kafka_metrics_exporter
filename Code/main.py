@@ -20,7 +20,8 @@ JMX_POLL_CONCURRENT_THREADS = 5
 url_list = {"ZooKeeper": ["http://localhost:49901/jolokia/read/org.apache.ZooKeeperService:*"],
             "KafkaBroker": ["http://localhost:49911/jolokia/read/kafka.*:*",
                             "http://localhost:49912/jolokia/read/kafka.*:*"],
-            "KafkaConnect": ["http://localhost:49921/jolokia/read/kafka.*:*"]
+            "KafkaConnect": ["http://localhost:49921/jolokia/read/kafka.*:*"],
+            "KSQL": ["http://localhost:49931/jolokia/read/kafka.*:*"]
             }
 
 # Accepted values form ingestion modules are one or more of the following
@@ -86,15 +87,19 @@ if __name__ == "__main__":
                           help='The Apache Kafka servers comma separated values in the format: http(s)://<hostname>:<port>. The port number is the exposed Jolokia port for scraping the metrics.')
     jmx_args.add_argument('--jmx-connect-server', type=str, metavar="http://localhost:49921/", action="append", dest="connect_server_list",
                           help='The Apache Kafka Connect servers comma separated values in the format: http(s)://<hostname>:<port>. The port number is the exposed Jolokia port for scraping the metrics.')
+    jmx_args.add_argument('--jmx-ksql-server', type=str, metavar="http://localhost:49931/", action="append", dest="ksql_server_list",
+                          help='The Confluent KSQL servers comma separated values in the format: http(s)://<hostname>:<port>. The port number is the exposed Jolokia port for scraping the metrics.')
 
     jmx_args.add_argument('--jmx-zk-poll-mbean', type=str, metavar="org.apache.ZooKeeperService:*", default=["org.apache.ZooKeeperService:*", ], action="append", dest="zk_mbeans_list",
-                          help='The MBeans that will be polled from the ZooKeeper server periodicatlly. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "org.apache.ZooKeeperService".')
+                          help='The MBeans that will be polled from the ZooKeeper server periodically. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "org.apache.ZooKeeperService".')
     jmx_args.add_argument('--jmx-kafka-poll-mbean', type=str, metavar="kafka.*:*", default=["kafka.*:*", ], action="append", dest="kafka_mbeans_list",
                           help='The MBeans that will be polled from the Kafka server periodically. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "kafka.*:*"')
     jmx_args.add_argument('--jmx-connect-poll-mbean', type=str, metavar="kafka.*:*", default=["kafka.*:*", ], action="append", dest="connect_mbeans_list",
-                          help='The MBeans that will be polled from the ZooKeeper server periodicatlly. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "kafka.*:*"')
+                          help='The MBeans that will be polled from the Kafka connect server(s) periodically. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "kafka.*:*"')
+    jmx_args.add_argument('--jmx-ksql-poll-mbean', type=str, metavar="kafka.*:*", default=["kafka.*:*", "io.confluent.*:*"], action="append", dest="ksql_mbeans_list",
+                          help='The MBeans that will be polled from the Confluent KSQL server(s) periodically. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "kafka.*:*"')
     jmx_args.add_argument('--jmx-default-bean', type=str, metavar="java.lang:type=*", default=["java.lang:type=*", ], action="append", dest="common_mbeans_list",
-                          help='The MBeans that will be polled from all the servers periodicatlly. These are common pattern mbeans that you would want to poll from all the servers. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "java.lang:type=*"')
+                          help='The MBeans that will be polled from all the servers periodically. These are common pattern mbeans that you would want to poll from all the servers. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "java.lang:type=*"')
 
     connect_rest_args.add_argument('--connect-thread-count', type=int, default=5, metavar=5,
                                    help='Thread pool to fetch Connect REST metrics. This thread pool is independent from the HTTP call thread pool and is used to fetch the Connect REST metrics from the servers.')
@@ -159,6 +164,9 @@ if __name__ == "__main__":
     if args.connect_server_list:
         url_list["KafkaConnect"] = return_url_set(args.connect_server_list,
                                                   args.connect_mbeans_list)
+    if args.ksql_server_list:
+        url_list["KSQL"] = return_url_set(args.ksql_server_list,
+                                          args.ksql_mbeans_list)
     default_JMX_URLs = return_url_set(["", ],
                                       args.common_mbeans_list)
 

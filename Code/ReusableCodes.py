@@ -1,17 +1,15 @@
 import time
 from functools import reduce
-import requests
-import concurrent.futures
 import asyncio
-import itertools
-from requests.auth import HTTPBasicAuth
-from urllib3.exceptions import InsecureRequestWarning
-from urllib.parse import urlparse
 from url_normalize import url_normalize
+import aiohttp
+import traceback
+
+loop = asyncio.get_event_loop()
+session = aiohttp.ClientSession(loop=loop)
 
 
 def current_milli_time():
-    import time
     return int(round(time.time() * 1000))
 
 
@@ -24,39 +22,50 @@ def flatten(d, pref=''):
             {}))
 
 
-async def invoke_urls_concurrently(input_urls: list, worker_count=10, **kwargs):
-    # Async Thread executor for making calls to the REST API.
-    # The input_uri takes a list of uri as an argument to call and calls them parallely
-    # The result is returned back as a list of data responses.
-    return_data = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
-        future_to_url = (executor.submit(invoke_url,
-                                         url, kwargs=kwargs) for url in input_urls)
-        for future in concurrent.futures.as_completed(future_to_url):
-            try:
-                contents = future.result()
-                return_data.append(contents)
-            except Exception:
-                raise
-    return return_data
+async def fetch(session, url, **kwargs):
+    parse_response = kwargs.get('parse_response', False)
+    async with session.get(url) as resp:
+        try:
+            print("Received response from " + str(resp.url) +
+                  ". Status Code: " + str(resp.status))
+            assert resp.status == 200
+            return await resp.json()
+        except Exception:
+            if (parse_response):
+                print("Exception in parsing response from URL " +
+                      url + ". Response Received: " + await resp.text())
+            else:
+                print("Exception in parsing response from URL " +
+                      url + ".")
 
 
-# Invoke the call for the input_uri passed.
-# This will setup the request session and calls the url.
-# Also does basic auth if AUTH_ENABLED is True.
-def invoke_url(input_url, **kwargs):
-    session = requests.Session()
-    session.verify = kwargs.get('verify', False)
-    auth_type = kwargs.get('auth_type', "None")
-    # Suppress only the single warning from urllib3 needed.
-    requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
-    if "basic" == auth_type:
-        session.auth = HTTPBasicAuth(kwargs['user'], kwargs['password'])
-    else:
-        session.auth = None
-    try:
-        contents = session.get(url_normalize(input_url))
-        if contents.ok:
-            return contents.json()
-    except Exception:
-        raise
+async def post(session, url):
+    async with session.post(url) as resp:
+        print("Received response from " + resp.url +
+              ". Status Code: " + resp.status)
+        return await resp.text()
+
+
+async def call_http_async(url_list: list, method="get", **kwargs):
+    global loop
+    enable_traceback = kwargs.get('traceback', False)
+    for url in url_list:
+        url = url_normalize(url)
+        print("Calling " + str(method) + " for URL: " + url)
+        try:
+            if method == "get":
+                return await fetch(session, url)
+            elif method == "post":
+                return await post(session, url)
+        except Exception as ex:
+            print(ex)
+            if (enable_traceback):
+                print(''.join(traceback.format_exception(
+                    etype=type(ex), value=ex, tb=ex.__traceback__)))
+
+
+if __name__ == "__main__":
+    http_test_urls = ["www.python.org", "www.facebook.com", "www.google.com"]
+    # http_test_urls = ["http://www.py33thon.org", ]
+    asyncio.ensure_future(call_http_async(http_test_urls))
+    loop.run_forever()

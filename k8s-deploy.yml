@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kafkajmxexporter
+spec:
+  containers:
+  - name: kafkajmxexporter
+    image: abhiwalia/kafkajmxexporter
+    command:
+      - "/bin/bash"
+      - "-c"
+      - "sleep 9999999"
+      # - "python"
+      # - "/usr/src/app/main.py"
+      # - "--jmx-kafka-server"
+      # - "http://kafka-0:7777/"
+      # - "--enable-kafka-sink"
+      # - "--kafka-topic-name"
+      # - "jmx_data_ingestion_pipeline"
+      # - "--kafka-conn-props"
+      # - "bootstrap.servers=10.82.7.228:9071"
+      # - "--kafka-conn-props"
+      # - "client.id=JMX_Data_Producer"
+      # - "--kafka-conn-props"
+      # - "compression.type=snappy"
+      # - "--kafka-conn-props"
+      # - "retries=10"
+      # - "--kafka-conn-props"
+      # - "linger.ms=50"

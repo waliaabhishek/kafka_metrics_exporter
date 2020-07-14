@@ -7,8 +7,9 @@ from url_normalize import url_normalize
 import ElasticSearchAppender
 import JMXScraper
 import KafkaAppender
+import KubernetesAutomator
 
-_executor = ThreadPoolExecutor(20)
+_executor = ThreadPoolExecutor(50)
 
 # I will whole heartily recommend not resolving below 30 seconds as the process needs to execute all the URL's in a
 # loop and the Java process will need time to breath , not some other process asking for metrics every 5-10 seconds.
@@ -74,12 +75,27 @@ if __name__ == "__main__":
     global_args.add_argument('--thread-count', type=int, default=20, metavar=20,
                              help="Thread pool to create for executing HTTP requests from the code. The HTTP requests include Elastic Bulk requests & Kafka Producer requests.")
 
-    jmx_args.add_argument('--jmx-poll-thread-count', type=int, default=5, metavar=5,
+    jmx_args.add_argument('--jmx-poll-thread-count', type=int, default=25, metavar=25,
                           help='Thread pool to fetch JMX metrics. This thread pool is independent from the HTTP call thread pool and is used to fetch the JMX metrics from the servers.')
     jmx_args.add_argument('--jmx-poll-wait-sec', type=int, default=60, metavar=20,
                           help='This is the poll duration which is enacted on JMX module only. The reason is that the poll for any new data from sink modules need to be decoupled from JMX fetch so that we do not overload the jolokia servers. The JMX module runs its own poll and refreshes the data following this particular value. This value cannot be assigned a value below 15 seconds due to overload switch.')
-    jmx_args.add_argument('--jmx-poll-timeout', type=int, default=45, metavar=45,
+    jmx_args.add_argument('--jmx-poll-timeout', type=int, default=10, metavar=10,
                           help='This parameter will help override the timeout wait for JMX fetch via jolokia.')
+
+    jmx_args.add_argument('--jmx-enable-k8s-discovery', action="store_true", default=None,
+                          help="Enable this switch to allow the code to scan deployed components as Kubernetes pods and gather required Jolokia URL's")
+    jmx_args.add_argument('--jmx-k8s-context', type=str, default=argparse.SUPPRESS, metavar="gke_projectname_region_cluster",
+                          required='--jmx-enable-k8s-discovery' in sys.argv, help='The kube context used to determine which cluster to work with. The context should be present in the local kube_config and is auto injected in Kuberenetes Pods.')
+    jmx_args.add_argument('--jmx-k8s-jolokia-enabled-annotation', type=str, default="jolokia/is_enabled", metavar="jolokia/is_enabled",
+                          help='The annotation to scan K8s for Jolokia Scrape to be enabled')
+    jmx_args.add_argument('--jmx-k8s-jolokia-server-type-annotation', type=str, default="argparse.SUPPRESS", metavar="jolokia/server_type",
+                          help='The annotation to scan K8s for identifying the server type -- KafkaBroker, KafkaConnect etc. Defaulted to Discovery')
+    jmx_args.add_argument('--jmx-k8s-jolokia-port-name-matcher', type=str, default="jolokia", metavar="jolokia",
+                          help='The port name in K8s pod spec to be used for identifying jolokia port number.')
+    jmx_args.add_argument('--jmx-k8s-label-filter', type=str, metavar="key1=value1, key2=value2", action="append", dest="k8s_label_filter_list",
+                          help='Any additional label filters to be added to the K8s discovery. By default, no label filters are used.')
+    jmx_args.add_argument('--jmx-k8s-field-filter', type=str, metavar="key1=value1, key2=value2", action="append", dest="k8s_field_filter_list",
+                          help='Any additional field selector filters to be added to the K8s discovery. By default, status.phase=Running is always appended and cannot be removed')
 
     jmx_args.add_argument('--jmx-zk-server', type=str, metavar="http://localhost:49901/", action="append", dest="zk_server_list",
                           help='The zookeeper servers comma separated values in the format: http(s)://<hostname>:<port>.  The port number is the exposed Jolokia port for scraping the metrics.')
@@ -131,9 +147,9 @@ if __name__ == "__main__":
         parser.error(
             'No sink provided, add --enable-elastic-sink or --enable-kafka-sink')
 
-    if not (args.zk_server_list or args.kafka_server_list or args.connect_server_list):
+    if not (args.zk_server_list or args.kafka_server_list or args.connect_server_list or args.jmx_enable_k8s_discovery):
         parser.error(
-            'No JMX Scrape locations provided, add --jmx-zk-server, --jmx-kafka-server or --jmx-connect-server')
+            'No JMX Scrape locations provided, add --jmx-zk-server, --jmx-kafka-server, --jmx-enable-k8s-discovery or --jmx-connect-server')
 
     # if ((args.enable_connect_rest_source is True) and (args.connect_rest_endpoint is None)):
     #     parser.error(
@@ -154,21 +170,50 @@ if __name__ == "__main__":
         else:
             return None
 
+    k8s_pods = dict()
+    enable_k8s = False
+    if args.jmx_enable_k8s_discovery:
+        labels_dict = dict()
+        fields_dict = dict()
+
+        if args.k8s_label_filter_list:
+            for item in args.k8s_label_filter_list:
+                k, v = item.split("=", 1)
+                labels_dict[k] = v
+        if args.k8s_field_filter_list:
+            for item in args.k8s_field_filter_list:
+                k, v = item.split("=", 1)
+                fields_dict[k] = v
+        enable_k8s = KubernetesAutomator.setup_everything(kube_label_filter_dict=labels_dict,
+                                                          kube_field_filter_dict=fields_dict,
+                                                          kube_context=args.jmx_k8s_context)
+        if enable_k8s:
+            k8s_pods = KubernetesAutomator.get_pod_details()
+
     url_list = dict()
-    if args.zk_server_list:
-        url_list["ZooKeeper"] = return_url_set(args.zk_server_list,
-                                               args.zk_mbeans_list)
-    if args.kafka_server_list:
-        url_list["KafkaBroker"] = return_url_set(args.kafka_server_list,
-                                                 args.kafka_mbeans_list)
-    if args.connect_server_list:
-        url_list["KafkaConnect"] = return_url_set(args.connect_server_list,
+    current_filter = "ZooKeeper"
+    if args.zk_server_list or k8s_pods.get(current_filter, False):
+        url_list[current_filter] = return_url_set((args.zk_server_list if args.zk_server_list else []) + k8s_pods.get(current_filter, []),
+                                                  args.zk_mbeans_list)
+    current_filter = "KafkaBroker"
+    if args.kafka_server_list or k8s_pods.get(current_filter, False):
+        url_list[current_filter] = return_url_set((args.kafka_server_list if args.kafka_server_list else []) + k8s_pods.get(current_filter, []),
+                                                  args.kafka_mbeans_list)
+    current_filter = "KafkaConnect"
+    if args.connect_server_list or k8s_pods.get(current_filter, False):
+        url_list[current_filter] = return_url_set((args.connect_server_list if args.connect_server_list else []) + k8s_pods.get(current_filter, []),
                                                   args.connect_mbeans_list)
-    if args.ksql_server_list:
-        url_list["KSQL"] = return_url_set(args.ksql_server_list,
-                                          args.ksql_mbeans_list)
+    current_filter = "KSQL"
+    if args.ksql_server_list or k8s_pods.get(current_filter, False):
+        url_list[current_filter] = return_url_set((args.ksql_server_list if args.ksql_server_list else []) + k8s_pods.get(current_filter, []),
+                                                  args.ksql_mbeans_list)
+
     default_JMX_URLs = return_url_set(["", ],
                                       args.common_mbeans_list)
+    if enable_k8s:
+        for k, v in k8s_pods.items():
+            if k not in ["ZooKeeper", "KafkaBroker", "KafkaConnect", "KSQL"]:
+                url_list[k] = return_url_set(v, args.common_mbeans_list)
 
     POLL_WAIT_IN_SECS = args.poll_interval
     ingestion_modules = []

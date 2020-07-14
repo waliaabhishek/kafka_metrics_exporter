@@ -1,5 +1,4 @@
 from urllib.parse import urlparse
-from urllib.parse import urlunparse
 import concurrent.futures
 import itertools
 import json
@@ -69,7 +68,7 @@ def add_default_fetch_list_to_urlist():
 
 
 def setup_everything(input_url_list, input_default_JMX_fetch=default_JMX_fetch, poll_wait=60,
-                     thread_count=1, connect_rest_enabled=False, input_call_timeout_in_secs=45):
+                     thread_count=50, connect_rest_enabled=False, input_call_timeout_in_secs=45):
     global url_list
     global default_JMX_fetch
     global IS_CONNECT_REST_ENABLED
@@ -147,8 +146,8 @@ def internal_fetch_jmx_data():
                 jmx_metrics_data[data["target_url"]] = data["result"]
                 last_fetch_timestamp = execution_timestamp
             except Exception as exc:
-                print(str(exc))
-                raise
+                print("Skipping metrics retrival for URL: " + exc.request.url)
+                print("Stacktrace: " + str(exc))
     if IS_CONNECT_REST_ENABLED:
         connect_rest_object = ConnectRESTMetrics.get_connect_rest_metrics()
         try:

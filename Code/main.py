@@ -182,13 +182,9 @@ if __name__ == "__main__":
         parser.error(
             'No sink provided, add --enable-elastic-sink or --enable-kafka-sink')
 
-    if not (args.zk_server_list or args.kafka_server_list or args.connect_server_list or args.jmx_enable_k8s_discovery):
+    if not (args.zk_server_list or args.kafka_server_list or args.connect_server_list or args.ksql_server_list or args.jmx_enable_k8s_discovery):
         parser.error(
-            'No JMX Scrape locations provided, add --jmx-zk-server, --jmx-kafka-server, --jmx-enable-k8s-discovery or --jmx-connect-server')
-
-    # if ((args.enable_connect_rest_source is True) and (args.connect_rest_endpoint is None)):
-    #     parser.error(
-    #         'If connect rest source is enabled, connect REST endpoint is required, add correct values for --enable-connect-rest-source and --connect-rest-endpoint')
+            'No JMX Scrape locations provided, add atleast one of --jmx-zk-server, --jmx-kafka-server, --jmx-ksql-server, --jmx-connect-server or --jmx-enable-k8s-discovery')
 
     connection_props = dict()
     if args.kafka_connection:

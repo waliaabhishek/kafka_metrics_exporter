@@ -114,8 +114,8 @@ def internal_invoke_call(input_uri, **kwargs):
             CONNECT_REST_ENDPOINT + input_uri))
         if contents.ok:
             return contents.json()
-    except Exception:
-        raise
+    except Exception as exc:
+        print("Connect Metrics Gather failed due to error: " + str(exc))
 
 
 def internal_generate_metrics_object(connector_status_dict):
@@ -176,16 +176,18 @@ def get_connect_rest_metrics(**kwargs):
     # Get all deployed connectors
     connectors_list = loop.run_until_complete(
         internal_invoke_urls([CORE_ENDPOINTS[0]], **kwargs))
-    # Render Connetor REST URI
-    connectors_uri_list = [CORE_ENDPOINTS[1].replace(
-        "{name}", k) for k in itertools.chain.from_iterable(connectors_list)]
-    # Check Connector Status
-    connectors_status_result = loop.run_until_complete(
-        internal_invoke_urls(connectors_uri_list, **kwargs))
-    # Setup a metrics object with all the attributes
-    jmx_data = internal_generate_jmx_metrics_object(internal_generate_metrics_object(
-        connector_status_dict=connectors_status_result))
-    return jmx_data
+    if connectors_list[0] is not None:
+        # Render Connetor REST URI
+        connectors_uri_list = [CORE_ENDPOINTS[1].replace(
+            "{name}", k) for k in itertools.chain.from_iterable(connectors_list)]
+        # Check Connector Status
+        connectors_status_result = loop.run_until_complete(
+            internal_invoke_urls(connectors_uri_list, **kwargs))
+        # Setup a metrics object with all the attributes
+        jmx_data = internal_generate_jmx_metrics_object(internal_generate_metrics_object(
+            connector_status_dict=connectors_status_result))
+        return jmx_data
+    return None
 
 
 if __name__ == "__main__":
@@ -194,23 +196,25 @@ if __name__ == "__main__":
     # Get all deployed connectors
     connectors_list = loop.run_until_complete(
         internal_invoke_urls([CORE_ENDPOINTS[0]]))
-    # Render Connetor REST URI
-    connectors_status = [CORE_ENDPOINTS[1].replace(
-        "{name}", k) for k in itertools.chain.from_iterable(connectors_list)]
-    # Check Connector Status
-    connectors_status_result = loop.run_until_complete(
-        internal_invoke_urls(connectors_status))
+    if connectors_list is not None:
+        # Render Connetor REST URI
+        connectors_status = [CORE_ENDPOINTS[1].replace(
+            "{name}", k) for k in itertools.chain.from_iterable(connectors_list)]
+        # Check Connector Status
+        connectors_status_result = loop.run_until_complete(
+            internal_invoke_urls(connectors_status))
 
-    # Setup a metrics object with all the attributes
-    from pprint import pprint as pp
-    output_object = internal_generate_metrics_object(
-        connector_status_dict=connectors_status_result)
+        # Setup a metrics object with all the attributes
+        from pprint import pprint as pp
+        output_object = internal_generate_metrics_object(
+            connector_status_dict=connectors_status_result)
 
-    # Convert the Data into JMX styled structure used in the JMX Scraper Module
-    import JMXScraper
-    url_details = urlparse(CONNECT_REST_ENDPOINT)
-    server_host_name = str(url_details.hostname + ":" + str(url_details.port))
-    formmatted_jmx_data = JMXScraper.internal_get_structured_json_from_response(
-        internal_generate_jmx_metrics_object(output_object), server_host_name, server_ID="KafkaConnect")
-    pp(formmatted_jmx_data, width=400)
+        # Convert the Data into JMX styled structure used in the JMX Scraper Module
+        import JMXScraper
+        url_details = urlparse(CONNECT_REST_ENDPOINT)
+        server_host_name = str(url_details.hostname +
+                               ":" + str(url_details.port))
+        formmatted_jmx_data = JMXScraper.internal_get_structured_json_from_response(
+            internal_generate_jmx_metrics_object(output_object), server_host_name, server_ID="KafkaConnect")
+        pp(formmatted_jmx_data, width=400)
     loop.close()

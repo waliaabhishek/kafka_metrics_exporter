@@ -34,6 +34,41 @@ ingestion_modules = ["elastic", "kafka"]
 # JMX metric line for ingestion to all the sources
 enable_connect_rest_scrape = True
 
+enable_k8s = False
+
+
+def finalize_url_list(args_list):
+    k8s_pods = dict()
+    global enable_k8s
+
+    if enable_k8s:
+        k8s_pods = KubernetesAutomator.get_pod_details()
+
+    inner_url_list = dict()
+    current_filter = "ZooKeeper"
+    if args_list.zk_server_list or k8s_pods.get(current_filter, False):
+        inner_url_list[current_filter] = return_url_set((args_list.zk_server_list if args_list.zk_server_list else []) + k8s_pods.get(current_filter, []),
+                                                        args_list.zk_mbeans_list)
+    current_filter = "KafkaBroker"
+    if args_list.kafka_server_list or k8s_pods.get(current_filter, False):
+        inner_url_list[current_filter] = return_url_set((args_list.kafka_server_list if args_list.kafka_server_list else []) + k8s_pods.get(current_filter, []),
+                                                        args_list.kafka_mbeans_list)
+    current_filter = "KafkaConnect"
+    if args_list.connect_server_list or k8s_pods.get(current_filter, False):
+        inner_url_list[current_filter] = return_url_set((args_list.connect_server_list if args_list.connect_server_list else []) + k8s_pods.get(current_filter, []),
+                                                        args_list.connect_mbeans_list)
+    current_filter = "KSQL"
+    if args_list.ksql_server_list or k8s_pods.get(current_filter, False):
+        inner_url_list[current_filter] = return_url_set((args_list.ksql_server_list if args_list.ksql_server_list else []) + k8s_pods.get(current_filter, []),
+                                                        args_list.ksql_mbeans_list)
+
+    if enable_k8s:
+        for k, v in k8s_pods.items():
+            if k not in ["ZooKeeper", "KafkaBroker", "KafkaConnect", "KSQL"]:
+                inner_url_list[k] = return_url_set(
+                    v, args_list.common_mbeans_list)
+    return inner_url_list
+
 
 async def main_loop(calling_object_method, jmx_data_node):
     task_list = []
@@ -187,33 +222,12 @@ if __name__ == "__main__":
         enable_k8s = KubernetesAutomator.setup_everything(kube_label_filter_dict=labels_dict,
                                                           kube_field_filter_dict=fields_dict,
                                                           kube_context=args.jmx_k8s_context)
-        if enable_k8s:
-            k8s_pods = KubernetesAutomator.get_pod_details()
 
     url_list = dict()
-    current_filter = "ZooKeeper"
-    if args.zk_server_list or k8s_pods.get(current_filter, False):
-        url_list[current_filter] = return_url_set((args.zk_server_list if args.zk_server_list else []) + k8s_pods.get(current_filter, []),
-                                                  args.zk_mbeans_list)
-    current_filter = "KafkaBroker"
-    if args.kafka_server_list or k8s_pods.get(current_filter, False):
-        url_list[current_filter] = return_url_set((args.kafka_server_list if args.kafka_server_list else []) + k8s_pods.get(current_filter, []),
-                                                  args.kafka_mbeans_list)
-    current_filter = "KafkaConnect"
-    if args.connect_server_list or k8s_pods.get(current_filter, False):
-        url_list[current_filter] = return_url_set((args.connect_server_list if args.connect_server_list else []) + k8s_pods.get(current_filter, []),
-                                                  args.connect_mbeans_list)
-    current_filter = "KSQL"
-    if args.ksql_server_list or k8s_pods.get(current_filter, False):
-        url_list[current_filter] = return_url_set((args.ksql_server_list if args.ksql_server_list else []) + k8s_pods.get(current_filter, []),
-                                                  args.ksql_mbeans_list)
-
     default_JMX_URLs = return_url_set(["", ],
                                       args.common_mbeans_list)
-    if enable_k8s:
-        for k, v in k8s_pods.items():
-            if k not in ["ZooKeeper", "KafkaBroker", "KafkaConnect", "KSQL"]:
-                url_list[k] = return_url_set(v, args.common_mbeans_list)
+
+    url_list = finalize_url_list(args)
 
     POLL_WAIT_IN_SECS = args.poll_interval
     ingestion_modules = []
@@ -261,6 +275,15 @@ if __name__ == "__main__":
                 end_time = time.perf_counter() - start_time
                 print(
                     f"Ingestion comnplete cycle finished in {end_time:0.2f} seconds.")
+                if enable_k8s:
+                    print("Refreshing pod list from K8s")
+                    url_list = finalize_url_list(args)
+                    JMXScraper.setup_everything(url_list, default_JMX_URLs,
+                                                poll_wait=(15 if args.jmx_poll_wait_sec < 15
+                                                           else args.jmx_poll_wait_sec),
+                                                thread_count=args.jmx_poll_thread_count,
+                                                connect_rest_enabled=args.enable_connect_rest_source,
+                                                input_call_timeout_in_secs=args.jmx_poll_timeout)
             else:
                 print("No new data received this cycle.Please try again later")
             print("=" * 120)

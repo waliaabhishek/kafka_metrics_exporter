@@ -150,18 +150,22 @@ def internal_fetch_jmx_data():
                 print("Stacktrace: " + str(exc))
     if IS_CONNECT_REST_ENABLED:
         connect_rest_object = ConnectRESTMetrics.get_connect_rest_metrics()
-        try:
-            url_details = urlparse(
-                ConnectRESTMetrics.CONNECT_REST_ENDPOINT)
-            server_host_name = str(
-                url_details.hostname + ":" + str(url_details.port))
-            formatted_jmx_data = internal_get_structured_json_from_response(
-                connect_rest_object, server_host_name, "KafkaConnect")
-            jmx_metrics_data[server_host_name] = formatted_jmx_data
-        except Exception as exc:
+        if connect_rest_object is not None:
+            try:
+                url_details = urlparse(
+                    ConnectRESTMetrics.CONNECT_REST_ENDPOINT)
+                server_host_name = str(
+                    url_details.hostname + ":" + str(url_details.port))
+                formatted_jmx_data = internal_get_structured_json_from_response(
+                    connect_rest_object, server_host_name, "KafkaConnect")
+                jmx_metrics_data[server_host_name] = formatted_jmx_data
+            except Exception as exc:
+                print(
+                    "Connect REST API was not fetched. Ignoring the Connect REST input data.")
+                print(str(exc))
+        else:
             print(
-                "Connect REST API was not fetched. Ignoring the Connect REST input data.")
-            print(str(exc))
+                "Connect REST API was not fetched due to an exception. Ignoring the Connect REST input data for now. Will try to fetch again in the next poll cycle.")
 
 
 def get_metrics(current_timestamp=None, force_metric_collection=False):

@@ -36,6 +36,7 @@ def setup_everything(kube_label_filter_dict: dict = {},
     print("Current label Filters: \t\t\t\t\t" + label_selector)
     print("Current field Filters: \t\t\t\t\t" + field_selector)
     print("Pods filter Annotation: \t\t\t\t" + enabled_check_annotation)
+    print("Pods port Annotation: \t\t\t\t\t" + jolokia_port_annotation)
     print("Pod Server Type annotation (or default to Discovered): \t" +
           server_type_annotation)
     # print("Pod Jolokia Port annotation:\t\t\t\t" + jolokia_port_annotation)
@@ -65,22 +66,33 @@ def add_server_to_fetch_list(poditems_list: list):
         if pod.metadata.annotations is not None and (enabled_check_annotation in pod.metadata.annotations.keys()):
             server_type_label = pod.metadata.annotations.get(
                 server_type_annotation, "Discovered")
-            if pod.spec.containers is not None:
-                for container in pod.spec.containers:
-                    if container.ports is not None:
-                        current_list = k8s_url_dict.get(
-                            server_type_label)
-                        for port in container.ports:
-                            # print(port)
-                            if str.upper(port.name) == str.upper(k8s_port_name) and str.upper(port.protocol) == "TCP":
-                                jolokia_url = "http://" + \
-                                    str(pod.status.pod_ip) + ":" + \
-                                    str(port.container_port)
-                                if current_list is None:
-                                    current_list = [jolokia_url]
-                                else:
-                                    current_list.append(jolokia_url)
-                        k8s_url_dict.update({server_type_label: current_list})
+            if pod.metadata.annotations is not None and (jolokia_port_annotation in pod.metadata.annotations.keys()):
+                current_list = k8s_url_dict.get(
+                    server_type_label)
+                jolokia_url = "http://" + \
+                    str(pod.status.pod_ip) + ":" + \
+                    str(pod.metadata.annotations[jolokia_port_annotation])
+                if current_list is None:
+                    current_list = [jolokia_url]
+                else:
+                    current_list.append(jolokia_url)
+                k8s_url_dict.update({server_type_label: current_list})
+
+            # if pod.spec.containers is not None:
+            #     for container in pod.spec.containers:
+            #         if container.ports is not None:
+            #             current_list = k8s_url_dict.get(
+            #                 server_type_label)
+            #             for port in container.ports:
+            #                 # print(port)
+            #                 if str.upper(port.name) == str.upper(k8s_port_name) and str.upper(port.protocol) == "TCP":
+            #                     jolokia_url = "http://" + \
+            #                         str(pod.status.pod_ip) + ":" + \
+            #                         str(port.container_port)
+            #                     if current_list is None:
+            #                         current_list = [jolokia_url]
+            #                     else:
+            #                         current_list.append(jolokia_url)
 
 
 def get_pod_details(kwargs={}):

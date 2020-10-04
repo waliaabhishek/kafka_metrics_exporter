@@ -99,6 +99,7 @@ def internal_get_structured_json_from_response(jmx_response_data, server_host_na
         if ":" in key:
             formatted_data_header = str(key.split(":")[0])
             formatted_data_KV_pair_strings = key.split(":")[1].split(",")
+            value["mbeanName"] = key
             value["injectedBeanName"] = formatted_data_header
             value["createdDateTime"] = curr_date_time
             value["injectedServerType"] = server_ID
@@ -121,8 +122,21 @@ def internal_prepare_jmx_data_for_url(url, execution_timestamp):
     url_details = urlparse(url)
     server_id = internal_get_server_type(url)
     server_host_name = str(url_details.hostname + ":" + str(url_details.port))
-    contents = json.loads(json.dumps(requests.get(url,
-                                                  timeout=CALL_TIMEOUT_IN_SECS).json()))['value']
+    dataset_from_jolokia = json.loads(json.dumps(requests.get(url,
+                                                              timeout=CALL_TIMEOUT_IN_SECS).json()))
+    if dataset_from_jolokia['status'] != 200:
+        return {"target_url": url,
+                "execution_timestamp": execution_timestamp,
+                "result": []}
+    if "*" not in url:
+        # modify the input data structure to accomodate differences between 
+        # regex based scrape and exact string based scrape
+        nv_pair = dict()
+        nv_pair[dataset_from_jolokia['request']
+                ['mbean']] = dataset_from_jolokia['value']
+        dataset_from_jolokia['value'] = nv_pair
+
+    contents = dataset_from_jolokia['value']
     # print("Data for URL: " + url + " is in format " + str(type(contents)) + ". Data length is " + str(len(contents)) )
     output_JSON_data = internal_get_structured_json_from_response(contents,
                                                                   server_host_name,
@@ -143,8 +157,9 @@ def internal_fetch_jmx_data():
         for future in concurrent.futures.as_completed(future_to_url):
             try:
                 data = future.result()
-                jmx_metrics_data[data["target_url"]] = data["result"]
-                last_fetch_timestamp = execution_timestamp
+                if data["result"]:
+                    jmx_metrics_data[data["target_url"]] = data["result"]
+                    last_fetch_timestamp = execution_timestamp
             except Exception as exc:
                 print("Skipping metrics retrival for URL: " + exc.request.url)
                 print("Stacktrace: " + str(exc))
@@ -185,10 +200,10 @@ def get_metrics(current_timestamp=None, force_metric_collection=False):
 if __name__ == "__main__":
     # global url_list
     # global POLL_WAIT_IN_SECS
-    input_url_list = {"ZooKeeper": ["http://localhost:49901/jolokia/read/org.apache.ZooKeeperService:*"],
-                      "KafkaBroker": ["http://localhost:49911/jolokia/read/kafka.*:*",
-                                      "http://localhost:49912/jolokia/read/kafka.*:*"],
-                      "KafkaConnect": ["http://localhost:49921/jolokia/read/kafka.*:*"]
+    input_url_list = {"ZooKeeper": ["http://localhost:49900/jolokia/read/org.apache.ZooKeeperService:*"]
+                      #   ,"KafkaBroker": ["http://localhost:49911/jolokia/read/kafka.*:*",
+                      #                   "http://localhost:49912/jolokia/read/kafka.*:*"]
+                      #   ,"KafkaConnect": ["http://localhost:49921/jolokia/read/kafka.*:*"]
                       }
     default_JMX_Fetch = ["/jolokia/read/java.lang:type=*"]
 
@@ -205,5 +220,5 @@ if __name__ == "__main__":
                 print("New data updated in the JMX object. Please retrieve from there")
             else:
                 print("No new data received this cycle. Please try again later")
-            print("=" * 120)
+            print("=" * 10)
             time.sleep(POLL_WAIT_IN_SECS)

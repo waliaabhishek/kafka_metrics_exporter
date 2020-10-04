@@ -149,7 +149,7 @@ if __name__ == "__main__":
                           help='The MBeans that will be polled from the Kafka connect server(s) periodically. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "kafka.*:*"')
     jmx_args.add_argument('--jmx-ksql-poll-mbean', type=str, metavar="kafka.*:*", default=["kafka.*:*", "io.confluent.*:*"], action="append", dest="ksql_mbeans_list",
                           help='The MBeans that will be polled from the Confluent KSQL server(s) periodically. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "kafka.*:*"')
-    jmx_args.add_argument('--jmx-default-bean', type=str, metavar="java.lang:type=*", default=["java.lang:type=*", ], action="append", dest="common_mbeans_list",
+    jmx_args.add_argument('--jmx-default-bean', type=str, metavar="java.lang:type=*", default=["java.lang:type=Memory", ], action="append", dest="common_mbeans_list",
                           help='The MBeans that will be polled from all the servers periodically. These are common pattern mbeans that you would want to poll from all the servers. The beans follow the formatting conventions required by Jolokia and the service will fail in case the formatting is incorrect. Eg: "java.lang:type=*"')
 
     connect_rest_args.add_argument('--connect-thread-count', type=int, default=5, metavar=5,

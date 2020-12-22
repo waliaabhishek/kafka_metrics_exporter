@@ -1,9 +1,12 @@
+import base64
 import io
 import json
 import time
+from elasticsearch.helpers import bulk
 from url_normalize import url_normalize
 
 import requests
+from requests.auth import HTTPBasicAuth
 from elasticsearch import Elasticsearch
 
 # the url for Elastic connection. No support for SSL yet. maybe some time soon ,
@@ -25,7 +28,7 @@ def setup_elastic_connection(elasticsearch_endpoint="http://localhost:9200",
                              elasticsearch_index_name="kafka-jmx-logs",
                              kibana_endpoint="http://localhost:5601",
                              es_bulk_url_timeout=30,
-                             kibana_dashboard_filename="scripts/dashboard/jmx_dashboard.json"
+                             kibana_dashboard_filename="scripts/dashboard/jmx_dashboard.ndjson"
                              ):
     global es_url
     global es_index_name
@@ -49,61 +52,37 @@ def create_elastic_index_template():
     request_headers = {
         'Content-Type': 'application/json',
     }
+    request_headers_form = {
+        'kbn-xsrf': 'true',
+    }
     # setup the body for inserting the templates
-    data = '{"template": "' + es_index_name + \
-        '-*","mappings": {"default": {"properties": {"createdDateTime": {"type": "date"}}}}}'
+    data = '{"index_patterns": ["' + es_index_name + '-*"],"template":{ \
+        "mappings": {"properties": {"createdDateTime": {"type": "date"}}}}}'
     # Insert the template into Elastic for datatime formatting
-    requests.put(url_normalize(es_url + '/_template/' + es_index_name + '_template'), headers=request_headers,
+    requests.put(url_normalize(es_url + '/_index_template/' + es_index_name + '_template'), headers=request_headers,
                  data=data)
     # Setup the headers for inserting index
-    request_headers['kbn-version'] = '5.5.2'
-
-    # Create the index pattern for Kibana
-    index_creation = '{"title": "' + es_index_name + \
-        '-*","notExpandable":true, "timeFieldName": "createdDateTime"}'
-    #  insert the index pattern for Kibana
-    requests.put(url_normalize(kibana_url + '/es_admin/.kibana/index-pattern/' + es_index_name + '-*/_create'),
-                 headers=request_headers, data=index_creation)
-    # Parse all the objects in the Dashboard & Visualization file as Kibana 5.5.2 does not have a bulk API for insert.
-    # Setup the headers for inserting objects into Kibana
+    request_headers['kbn-version'] = '7.10.1'
     request_headers['kbn-xsrf'] = 'true'
-
-    with open(kibana_dashboard_file_location, "r") as file:
-        file_contents = json.load(file)
-        for object_list_values in file_contents:
-            requests.put(url_normalize(kibana_url + '/es_admin/.kibana/' + str(object_list_values["_type"]) + "/" + str(
-                object_list_values["_id"])), headers=request_headers, json=object_list_values["_source"])
+    # Create the index pattern for Kibana
+    files = {'file': ('export.ndjson', open(kibana_dashboard_file_location, 'rb'))}
+    requests.post(url_normalize(kibana_url + '/api/saved_objects/_import'), headers=request_headers_form,
+                  auth=HTTPBasicAuth('user', 'pass'), files=files)
 
 
-# Creates a file with data to be inserted using ES API.
-# The file format is strictly adhering to ES bulk insert and was
-# designed to insert in bulk by default.
-def internal_write_data_to_file(file_name, json_dict):
-    first_run_flag = True
-    for item in json_dict:
-        if first_run_flag:
-            file_name.write("{\"index\":{\"_type\": \"doc\"}}")
-            first_run_flag = False
-        else:
-            file_name.write("\n{\"index\":{\"_type\": \"doc\"}}")
-        file_name.write("\n" + str(item))
-    return file_name
-
-
-# Read data from the file and bulk ingest into a specific Elastic index
+# Prepare data and inject to elastic index
 def call_elastic_bulk(data_dict):
     global es_url
+    actions = []
     es_client = Elasticsearch([es_url],
                               retry_on_timeout=True,
                               max_retries=10,
-                              timeout=es_bulk_url_timeout_secs)
-    # body = []
-    in_memory_file_path = io.StringIO("")
-    in_memory_file_path = internal_write_data_to_file(
-        in_memory_file_path, data_dict)
-    # body = file.read().splitlines()
+                              timeout=es_bulk_url_timeout_secs,
+                              http_auth=('user', 'secret'))
+
+    for item in data_dict:
+        actions.append(str(item))
     curr_index_name = es_index_name + "-" + time.strftime("%Y-%m-%d")
-    es_client.bulk(body=in_memory_file_path.getvalue(), index=curr_index_name, params={
-                   "timeout": str(es_bulk_url_timeout_secs) + "s", "request_timeout": es_bulk_url_timeout_secs})
-    in_memory_file_path.close()
-    # return response
+    bulk(es_client, index=curr_index_name, actions=actions, params={
+        "timeout": str(es_bulk_url_timeout_secs) + "s", "request_timeout": es_bulk_url_timeout_secs}, refresh=True,
+         stats_only=True, raise_on_error=False)

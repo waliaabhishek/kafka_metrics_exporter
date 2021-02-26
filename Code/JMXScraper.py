@@ -129,7 +129,7 @@ def internal_prepare_jmx_data_for_url(url, execution_timestamp):
                 "execution_timestamp": execution_timestamp,
                 "result": []}
     if "*" not in url:
-        # modify the input data structure to accomodate differences between 
+        # modify the input data structure to accomodate differences between
         # regex based scrape and exact string based scrape
         nv_pair = dict()
         nv_pair[dataset_from_jolokia['request']

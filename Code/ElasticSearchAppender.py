@@ -53,7 +53,8 @@ def create_elastic_index_template():
     data = '{"template": "' + es_index_name + \
         '-*","mappings": {"default": {"properties": {"createdDateTime": {"type": "date"}}}}}'
     # Insert the template into Elastic for datatime formatting
-    requests.put(url_normalize(es_url + '/_template/' + es_index_name + '_template'), headers=request_headers,
+    requests.put(url_normalize(es_url + '/_template/' + es_index_name + '_template'),
+                 headers=request_headers,
                  data=data)
     # Setup the headers for inserting index
     request_headers['kbn-version'] = '5.5.2'
@@ -63,7 +64,8 @@ def create_elastic_index_template():
         '-*","notExpandable":true, "timeFieldName": "createdDateTime"}'
     #  insert the index pattern for Kibana
     requests.put(url_normalize(kibana_url + '/es_admin/.kibana/index-pattern/' + es_index_name + '-*/_create'),
-                 headers=request_headers, data=index_creation)
+                 headers=request_headers,
+                 data=index_creation)
     # Parse all the objects in the Dashboard & Visualization file as Kibana 5.5.2 does not have a bulk API for insert.
     # Setup the headers for inserting objects into Kibana
     request_headers['kbn-xsrf'] = 'true'
@@ -72,7 +74,9 @@ def create_elastic_index_template():
         file_contents = json.load(file)
         for object_list_values in file_contents:
             requests.put(url_normalize(kibana_url + '/es_admin/.kibana/' + str(object_list_values["_type"]) + "/" + str(
-                object_list_values["_id"])), headers=request_headers, json=object_list_values["_source"])
+                object_list_values["_id"])),
+                headers=request_headers,
+                json=object_list_values["_source"])
 
 
 # Creates a file with data to be inserted using ES API.
